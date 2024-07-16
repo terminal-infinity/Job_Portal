@@ -5,8 +5,11 @@ namespace App\Http\Controllers;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
+use Intervention\Image\ImageManager;
+use Intervention\Image\Drivers\Gd\Driver;
 
 class AccountController extends Controller
 {
@@ -73,12 +76,92 @@ class AccountController extends Controller
 
     //Show user profile page
     public function profile(){
-        return view('front.account.profile');
+        $id = Auth::user()->id;
+
+        $user = User::where('id',$id)->first();
+
+
+        return view('front.account.profile',[
+            'user' => $user
+        ]);
     }
 
     //Show user profile page
     public function logout(){
         Auth::logout();
         return redirect()->route('account.login');
+    }
+
+    //update user
+    public function updateProfile(Request $request){
+        $id = Auth::user()->id;
+
+        $validator = Validator::make($request->all(),[
+            'name' => 'required|min:3',
+            'email' => 'required|email|unique:users,email,'.$id.',id',
+        ]);
+
+        if($validator->passes()){
+
+            $user = User::find($id);
+            $user->name = $request->name;
+            $user->email = $request->email;
+            $user->designation = $request->designation;
+            $user->mobile = $request->mobile;
+
+            $user-> save();
+
+            session()->flash('success','Updated Successfully');
+
+            return response()->json([
+                'status' => true,
+                'errors' => []
+            ]);
+        }else{
+            return response()->json([
+                'status' => false,
+                'errors' => $validator->errors()
+            ]);
+        }
+    }
+    public function updateProfilePic(Request $request){
+        $id = Auth::user()->id;
+
+        $validator = Validator::make($request->all(),[
+            'image' => 'required|image',
+        ]);
+        if($validator->passes()){
+            $image= $request->image;
+            $ext = $image->getClientOriginalExtension();
+            $imageName = $id.'-'.time().'.'.$ext;
+            $image->move(public_path('/public/profilePic/'),$imageName);
+
+            // create new image instance (800 x 600)
+            $sourcePath = public_path('/public/profilePic/'.$imageName);
+            $manager = new ImageManager(Driver::class);
+            $image = $manager->read($sourcePath);
+
+            // crop the best fitting 5:3 (600x360) ratio and resize to 600x360 pixel
+            $image->cover(150, 150);
+            $image->toPng()->save(public_path('/public/profilePic/'.$imageName));
+
+            //Delete old pic
+            File::delete(public_path('/public/profilePic/'.Auth::user()->image));
+            
+
+            User::where('id',$id)->update(['image'=> $imageName]);
+
+            session()->flash('success','Image Uplode Successfully');
+
+            return response()->json([
+                'status' => true,
+                'errors' => []
+            ]);
+        }else{
+            return response()->json([
+                'status' => false,
+                'errors' => $validator->errors()
+            ]);
+        }
     }
 }
